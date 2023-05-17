@@ -229,22 +229,25 @@ class Lsu(addressStages: Set[Stage], loadStages: Seq[Stage], storeStage: Stage)
     def checkAccessWidth(accessWidth: SpinalEnumCraft[LsuAccessWidth.type], address: UInt) = {
       val misaligned = Bool()
       val baseMask = Bits(config.xlen / 8 bits)
-
+      val size = UInt(2 bits)
       switch(accessWidth) {
         is(LsuAccessWidth.B) {
           misaligned := False
           baseMask := B"0001"
+          size := U(0)
         }
         is(LsuAccessWidth.H) {
           misaligned := (address & 1) =/= 0
           baseMask := B"0011"
+          size := U(1)
         }
         is(LsuAccessWidth.W) {
           misaligned := (address & 3) =/= 0
           baseMask := B"1111"
+          size := U(2)
         }
       }
-      (misaligned, baseMask)
+      (misaligned, baseMask, size)
     }
 
     def trap(cause: TrapCause, stage: Stage) = {
@@ -289,7 +292,7 @@ class Lsu(addressStages: Set[Stage], loadStages: Seq[Stage], storeStage: Stage)
 
         val isActive = operation === LsuOperationType.LOAD
 
-        val (misaligned, baseMask) = checkAccessWidth(accessWidth, address)
+        val (misaligned, baseMask, size) = checkAccessWidth(accessWidth, address)
 
         val mask = baseMask |<< address(1 downto 0)
 
@@ -316,7 +319,7 @@ class Lsu(addressStages: Set[Stage], loadStages: Seq[Stage], storeStage: Stage)
               loadActive := True
             }
             when(busReady || loadActive) {
-              val tpl = dbusCtrl.read(busAddress)
+              val tpl = dbusCtrl.read(address, size)
               valid := tpl._1
               wValue := tpl._2
             }
@@ -379,7 +382,7 @@ class Lsu(addressStages: Set[Stage], loadStages: Seq[Stage], storeStage: Stage)
 
       val isActive = operation === LsuOperationType.STORE
 
-      val (misaligned, baseMask) = checkAccessWidth(accessWidth, address)
+      val (misaligned, baseMask, size) = checkAccessWidth(accessWidth, address)
 
       val mask = baseMask |<< address(1 downto 0)
 
@@ -428,7 +431,7 @@ class Lsu(addressStages: Set[Stage], loadStages: Seq[Stage], storeStage: Stage)
             }
           }
 
-          val accepted = dbusCtrl.write(busAddress, data, mask)
+          val accepted = dbusCtrl.write(address, size, data, mask)
           arbitration.isReady := accepted
 
           formal.lsuOnStore(storeStage, busAddress, mask, data)

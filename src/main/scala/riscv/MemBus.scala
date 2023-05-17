@@ -17,6 +17,7 @@ case class MemBusConfig(
 case class MemBusCmd(config: MemBusConfig, idWidth: BitCount) extends Bundle {
   val address = UInt(config.addressWidth bits)
   val id = UInt(idWidth)
+  val size = UInt(log2Up(config.dataWidth/8) bits)
   val write = if (config.readWrite) Bool() else null
   val wdata = if (config.readWrite) UInt(config.dataWidth bits) else null
   val wmask = if (config.readWrite) Bits(config.dataWidth / 8 bits) else null
@@ -79,13 +80,14 @@ case class MemBus(val config: MemBusConfig, val idWidth: BitCount)
   def toAxi4Shared(): Axi4Shared = {
     assert(isMasterInterface)
 
-    val axi4Config = MemBus.getAxi4Config(config, idWidth)
+    val axi4Config = MemBus.getAxi4Config(config, idWidth, useSize = true)
     val axi4Bus = Axi4Shared(axi4Config)
 
     axi4Bus.sharedCmd.valid := cmd.valid
     axi4Bus.sharedCmd.addr := cmd.address
     axi4Bus.sharedCmd.write := cmd.write
     axi4Bus.sharedCmd.id := cmd.id
+    axi4Bus.sharedCmd.size := cmd.size.resized
     cmd.ready := axi4Bus.sharedCmd.ready
 
     axi4Bus.writeData.valid := cmd.write && cmd.valid
@@ -112,7 +114,7 @@ object MemBus {
     useSlaveError = false
   )
 
-  def getAxi4Config(config: MemBusConfig, idWidth: BitCount) = Axi4Config(
+  def getAxi4Config(config: MemBusConfig, idWidth: BitCount, useSize: Boolean = false) = Axi4Config(
     addressWidth = config.addressWidth,
     dataWidth = config.dataWidth,
     useId = true,
@@ -121,7 +123,7 @@ object MemBus {
     useBurst = false,
     useLock = false,
     useCache = false,
-    useSize = false,
+    useSize = useSize,
     useQos = false,
     useLen = false,
     useLast = true,
@@ -154,6 +156,7 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
   bus.cmd.valid := currentCmd.valid
   bus.cmd.id := currentCmd.cmd.id
   bus.cmd.address := currentCmd.cmd.address
+  bus.cmd.size := currentCmd.cmd.size
 
   if (bus.config.readWrite) {
     bus.cmd.write := currentCmd.cmd.write
@@ -175,6 +178,7 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
 
   private def issueCommand(
       address: UInt,
+      size: UInt,
       write: Boolean = false,
       wdata: UInt = null,
       wmask: Bits = null
@@ -190,6 +194,7 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
     }
 
     currentCmd.cmd.address := address
+    currentCmd.cmd.size := size
     bus.cmd.valid := True
     bus.cmd.address := address
 
@@ -213,14 +218,14 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
     currentCmd.ready := False
   }
 
-  def read(address: UInt): (Bool, UInt) = {
+  def read(address: UInt, size: UInt): (Bool, UInt) = {
     val valid = False
     val rdata = U(0, bus.config.dataWidth bits)
     val dropRsp = False
     val issuedThisCycle = False
 
     when(!currentCmd.isIssued) {
-      issueCommand(address)
+      issueCommand(address, size)
       issuedThisCycle := True
     } elsewhen (currentCmd.cmd.address =/= address) {
       dropRsp := True
@@ -239,7 +244,7 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
     (valid, rdata)
   }
 
-  def write(address: UInt, wdata: UInt, wmask: Bits): Bool = {
+  def write(address: UInt, size: UInt, wdata: UInt, wmask: Bits): Bool = {
     assert(bus.config.readWrite)
 
     val accepted = False
@@ -247,7 +252,7 @@ class MemBusControl(bus: MemBus)(implicit config: Config) extends Area {
     val issuedThisCycle = False
 
     when(!currentCmd.isIssued) {
-      issueCommand(address, write = true, wdata, wmask)
+      issueCommand(address, size, write = true, wdata, wmask)
       issuedThisCycle := True
     } elsewhen (currentCmd.cmd.address =/= address) {
       dropRsp := True

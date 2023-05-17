@@ -65,6 +65,7 @@ class DynamicMemoryBackbone(stageCount: Int)(implicit config: Config)
         fullReadDBusCmd.wmask.assignDontCare()
         fullReadDBusCmd.wdata.assignDontCare()
         fullReadDBusCmd.address := internalReadDBus.cmd.address
+        fullReadDBusCmd.size := internalReadDBus.cmd.size
 
         val busValid = Bool()
         busValid := False
@@ -103,6 +104,8 @@ class DynamicMemoryBackbone(stageCount: Int)(implicit config: Config)
       cmdValid := False
       val cmdAddress = UInt(config.xlen bits)
       cmdAddress.assignDontCare()
+      val cmdSize = UInt(log2Up(config.dbusConfig.dataWidth/8) bits)
+      cmdSize.assignDontCare()
       val cmdId = UInt(idWidth)
       cmdId.assignDontCare()
       val cmdWrite = Bool()
@@ -129,6 +132,7 @@ class DynamicMemoryBackbone(stageCount: Int)(implicit config: Config)
         ) { // prevent overflowing the pending counter for loads
           cmdValid := True
           cmdAddress := cmd.address
+          cmdSize := cmd.size
           cmdId := index
           cmdWrite := cmd.write
           cmdWdata := cmd.wdata
@@ -141,6 +145,7 @@ class DynamicMemoryBackbone(stageCount: Int)(implicit config: Config)
 
       externalDBus.cmd.valid <> cmdValid
       externalDBus.cmd.address <> cmdAddress
+      externalDBus.cmd.size <> cmdSize
       externalDBus.cmd.id <> cmdId
       externalDBus.cmd.write <> cmdWrite
       externalDBus.cmd.wdata <> cmdWdata

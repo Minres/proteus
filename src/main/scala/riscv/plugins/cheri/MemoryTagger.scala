@@ -55,7 +55,7 @@ class MemoryTagger(memoryStart: BigInt, memorySize: BigInt)(implicit context: Co
             val payload = dbusIn.cmd.payload
 
             when(payload.write) {
-              val accepted = dbusControl.write(payload.address, payload.wdata, payload.wmask)
+              val accepted = dbusControl.write(payload.address, U(2), payload.wdata, payload.wmask)
 
               when(accepted) {
                 dbusIn.cmd.ready := True
@@ -65,7 +65,7 @@ class MemoryTagger(memoryStart: BigInt, memorySize: BigInt)(implicit context: Co
                 }
               }
             } otherwise {
-              val (valid, rdata) = dbusControl.read(payload.address)
+              val (valid, rdata) = dbusControl.read(payload.address, U(2))
 
               when(valid) {
                 dbusIn.cmd.ready := True
@@ -75,14 +75,14 @@ class MemoryTagger(memoryStart: BigInt, memorySize: BigInt)(implicit context: Co
             }
           } elsewhen (cbusIn.cmd.valid) {
             when(cbusPayload.write) {
-              val accepted = dbusControl.write(cbusWordAddress, cbusWord, B"1111")
+              val accepted = dbusControl.write(cbusWordAddress, U(2), cbusWord, B"1111")
 
               when(accepted) {
                 cbusWordCtr.increment()
                 goto(CAP_OP)
               }
             } otherwise {
-              val (valid, rdata) = dbusControl.read(cbusWordAddress)
+              val (valid, rdata) = dbusControl.read(cbusWordAddress, U(2))
 
               when(valid) {
                 cbusReadWords(cbusWordCtr) := rdata
@@ -97,7 +97,7 @@ class MemoryTagger(memoryStart: BigInt, memorySize: BigInt)(implicit context: Co
       val CAP_OP = new State {
         whenIsActive {
           when(cbusPayload.write) {
-            val accepted = dbusControl.write(cbusWordAddress, cbusWord, B"1111")
+            val accepted = dbusControl.write(cbusWordAddress, U(2), cbusWord, B"1111")
 
             when(accepted) {
               when(cbusWordCtr.willOverflowIfInc) {
@@ -112,7 +112,7 @@ class MemoryTagger(memoryStart: BigInt, memorySize: BigInt)(implicit context: Co
               cbusWordCtr.increment()
             }
           } otherwise {
-            val (valid, rdata) = dbusControl.read(cbusWordAddress)
+            val (valid, rdata) = dbusControl.read(cbusWordAddress, U(2))
 
             when(valid) {
               when(cbusWordCtr.willOverflowIfInc) {
